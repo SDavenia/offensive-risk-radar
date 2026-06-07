@@ -1,0 +1,44 @@
+# Notebooks for testing
+view.ipynb
+find_subreddits.ipynb
+reddit_scraper_test.ipynb
+baselines.ipynb
+prepare_results.ipynb
+
+# Tests
+test_articles.csv
+
+# env
+.env
+.vscode
+try*
+
+# Old data
+VideosComments_old
+old*
+gold_metadata.csv
+
+# Fake data for testing while annotation is underway
+Annotators_workload_fake
+VideosComments_fake
+VideosComments_new
+
+# Results files
+results
+results_baselines
+
+# Python and cache
+__pycache__
+*.pyc
+.DS_Store
+*.DS_Store
+
+# Sbatch files
+sbatch_run/
+sbatch_output/
+
+# Shell
+*.sh
+
+# Datasets
+datasets/
