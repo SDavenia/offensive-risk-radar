@@ -6,6 +6,7 @@ Authors: Samuele D'Avenia, Eliana Di Palma, Lia Draetta, Soda Marem Lo and Marta
 
 The full pipeline consists of a series of steps to create the data and test the proposed methodology and baselines.
 We briefly describe the steps below and visualize them in the image:
+![Full pipeline representation](imgs/comments_annotation_pipeline.png)
 
 ## Repo structure
 
