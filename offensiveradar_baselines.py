@@ -1,18 +1,3 @@
-####
-# Offensiveness-TRIGGERING prediction from video metadata (non-learned baselines).
-#
-# Five reference baselines for the same binary task (predict `offensive_trigger`):
-#   - random                : fully random labels, p(1)=0.5. 5 runs + mean/std.
-#   - topic_majority         : assign every video the most common label in its topic.
-#   - topic_majority_random  : within each topic, sample label 1 with probability
-#                             equal to that topic's positive rate (e.g. a topic
-#                             that is 60% offensive -> p(1)=0.6). 5 runs + mean/std.
-#   - all_positive           : assign label 1 (triggering) to every video.
-#   - all_negative           : assign label 0 (non-triggering) to every video.
-#
-# Output layout mirrors the LLM pipeline: results/<baseline>/<tag>.csv + <tag>.txt.
-####
-
 import os
 import argparse
 
@@ -21,33 +6,23 @@ import pandas as pd
 from dataclasses import dataclass
 from typing import Optional
 from sklearn.metrics import classification_report, precision_recall_fscore_support
-from sklearn.model_selection import StratifiedKFold
 
 
-# --------------------------------------------------------------------------- #
-# Config
-# --------------------------------------------------------------------------- #
-
-N_RUNS = 5          # random assignments for the random / topic_majority_random baselines
-SEED = 42           # base seed; run i uses SEED + i
+N_RUNS = 5         
+SEED = 42         
 
 TOPIC_COL = "video_topic"
-
-# `offensive_trigger` is the binary ground truth (1 = video triggers offensive
-# comments, 0 = it does not). `video_topic` is needed by the topic baselines.
 REQUIRED_COLUMNS = ["offensive_trigger"]
 
 
 @dataclass
 class BaselineSpec:
     name: str
-    kind: str                    # "random" | "topic_majority" | "topic_random" | "constant"
-    n_runs: int = 1              # >1 for the random baselines
-    const_value: Optional[int] = None   # 0/1 for the constant baselines
+    kind: str                    
+    n_runs: int = 1              
+    const_value: Optional[int] = None  
     needs_topic: bool = False
 
-
-# Analogous to the LLM REGISTRY: pick what to run with --baselines.
 REGISTRY = {
     "random": BaselineSpec("random", kind="random", n_runs=N_RUNS),
     "topic_majority": BaselineSpec("topic_majority", kind="topic_majority", needs_topic=True),
@@ -58,10 +33,6 @@ REGISTRY = {
     "all_negative": BaselineSpec("all_negative", kind="constant", const_value=0),
 }
 
-
-# --------------------------------------------------------------------------- #
-# Data preparation
-# --------------------------------------------------------------------------- #
 
 def load_dataset(input_path: str, type_filter: str = "all", need_topic: bool = False):
     """Read the per-video CSV, optionally filter by gold/silver, and use the
@@ -98,10 +69,6 @@ def load_dataset(input_path: str, type_filter: str = "all", need_topic: bool = F
     return df.reset_index(drop=True)
 
 
-# --------------------------------------------------------------------------- #
-# Prediction  (baseline analog of the LLM inference step)
-# --------------------------------------------------------------------------- #
-
 def predict_random(n: int, seed: int) -> list:
     """Fully random labels, each drawn 0/1 with p=0.5."""
     rng = np.random.default_rng(seed)
@@ -110,8 +77,7 @@ def predict_random(n: int, seed: int) -> list:
 
 def predict_topic_random(df: pd.DataFrame, seed: int, topic_col: str = TOPIC_COL) -> list:
     """Within each topic, sample label 1 with probability equal to that topic's
-    positive rate. Topics unseen at predict time fall back to the global rate.
-    Fit on the full data (optimistic); see --topic-cv for a leakage-free variant."""
+    positive rate."""
     rng = np.random.default_rng(seed)
     topic_rate = df.groupby(topic_col)["true_label"].mean().to_dict()
     global_rate = float(df["true_label"].mean())
@@ -119,27 +85,8 @@ def predict_topic_random(df: pd.DataFrame, seed: int, topic_col: str = TOPIC_COL
     return (rng.random(len(df)) < probs).astype(int).tolist()
 
 
-def predict_topic_random_cv(df: pd.DataFrame, n_splits: int, seed: int,
-                            topic_col: str = TOPIC_COL) -> list:
-    """Leakage-free variant: per-topic positive rate is estimated on the train
-    fold and used to sample labels for the held-out fold (out-of-fold preds)."""
-    y = df["true_label"].values
-    preds = np.empty(len(df), dtype=int)
-    rng = np.random.default_rng(seed)
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
-    for train_idx, test_idx in skf.split(df, y):
-        train = df.iloc[train_idx]
-        topic_rate = train.groupby(topic_col)["true_label"].mean().to_dict()
-        global_rate = float(train["true_label"].mean())
-        probs = df.iloc[test_idx][topic_col].map(topic_rate).fillna(global_rate).to_numpy(dtype=float)
-        preds[test_idx] = (rng.random(len(test_idx)) < probs).astype(int)
-    return preds.tolist()
-
-
 def predict_topic_majority(df: pd.DataFrame, topic_col: str = TOPIC_COL):
-    """Most common label within each topic (ties -> global majority).
-    Fit and evaluated on the full data: simple and standard, but optimistic
-    (label leakage). Use predict_topic_majority_cv for an honest estimate."""
+    """Most common label within each topic (ties -> global majority)."""
     global_majority = int(df["true_label"].mode().iloc[0])
     topic_majority = (
         df.groupby(topic_col)["true_label"]
@@ -149,30 +96,6 @@ def predict_topic_majority(df: pd.DataFrame, topic_col: str = TOPIC_COL):
     preds = df[topic_col].map(topic_majority).fillna(global_majority).astype(int)
     return preds.tolist(), topic_majority
 
-
-def predict_topic_majority_cv(df: pd.DataFrame, n_splits: int, seed: int,
-                              topic_col: str = TOPIC_COL) -> list:
-    """Leakage-free variant: per-topic majority is computed on the train fold
-    and applied to the held-out fold; returns out-of-fold predictions."""
-    y = df["true_label"].values
-    preds = np.empty(len(df), dtype=int)
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
-    for train_idx, test_idx in skf.split(df, y):
-        train = df.iloc[train_idx]
-        global_majority = int(train["true_label"].mode().iloc[0])
-        tm = (
-            train.groupby(topic_col)["true_label"]
-            .agg(lambda s: int(s.mode().iloc[0]) if not s.mode().empty else global_majority)
-            .to_dict()
-        )
-        fold = df.iloc[test_idx][topic_col].map(tm).fillna(global_majority).astype(int)
-        preds[test_idx] = fold.values
-    return preds.tolist()
-
-
-# --------------------------------------------------------------------------- #
-# Scoring & output
-# --------------------------------------------------------------------------- #
 
 TARGET_NAMES = ["non-triggering (No)", "triggering (Si)"]
 
@@ -263,11 +186,6 @@ def write_aggregate(out_dir: str, baseline_key: str, run_metrics: list):
         fh.write("\n".join(lines) + "\n")
     print(f"  -> {txt_path}")
 
-
-# --------------------------------------------------------------------------- #
-# Main
-# --------------------------------------------------------------------------- #
-
 def parse_args():
     ap = argparse.ArgumentParser(
         description="Non-learned baselines for offensiveness-triggering prediction."
@@ -281,9 +199,6 @@ def parse_args():
                     help="Which baselines to run (default: all in the registry).")
     ap.add_argument("--type", choices=["all", "gold", "silver"], default="all",
                     help="Restrict ground truth to gold/silver videos (default: all).")
-    ap.add_argument("--topic-cv", type=int, default=0,
-                    help="If >1, evaluate the topic baselines with K-fold CV (leakage-free) "
-                         "instead of fitting on the full data (default: 0 = full data).")
     return ap.parse_args()
 
 
@@ -315,32 +230,21 @@ def main():
             run_metrics = []
             for i in range(spec.n_runs):
                 print(f"\n[{baseline_key}] run {i}")
-                if args.topic_cv and args.topic_cv > 1:
-                    preds = predict_topic_random_cv(df, n_splits=args.topic_cv, seed=SEED + i)
-                    mode = f"{args.topic_cv}-fold CV (out-of-fold)"
-                else:
-                    preds = predict_topic_random(df, seed=SEED + i)
-                    mode = "full-data (optimistic; see --topic-cv)"
+                preds = predict_topic_random(df, seed=SEED + i)
                 write_outputs(args.out_dir, baseline_key, f"run_{i}", df, preds,
-                              header_extra=[f"Mode: per-topic random sampling, {mode} | seed: {SEED + i}"])
+                              header_extra=[f"Mode: per-topic random sampling | seed: {SEED + i}"])
                 run_metrics.append(compute_metrics(y, preds))
             print(f"\n[{baseline_key}] aggregate")
             write_aggregate(args.out_dir, baseline_key, run_metrics)
 
         elif spec.kind == "topic_majority":
-            if args.topic_cv and args.topic_cv > 1:
-                print(f"\n[{baseline_key}] {args.topic_cv}-fold CV (leakage-free)")
-                preds = predict_topic_majority_cv(df, n_splits=args.topic_cv, seed=SEED)
-                write_outputs(args.out_dir, baseline_key, "predictions", df, preds,
-                              header_extra=[f"Mode: {args.topic_cv}-fold stratified CV (out-of-fold preds)"])
-            else:
-                print(f"\n[{baseline_key}] full-data majority per topic")
-                preds, topic_majority = predict_topic_majority(df)
-                tm_lines = ["Mode: full-data (optimistic; see --topic-cv for leakage-free)",
-                            "Per-topic majority label:"]
-                tm_lines += [f"  {t} -> {lab}" for t, lab in topic_majority.items()]
-                write_outputs(args.out_dir, baseline_key, "predictions", df, preds,
-                              header_extra=tm_lines)
+            print(f"\n[{baseline_key}] full-data majority per topic")
+            preds, topic_majority = predict_topic_majority(df)
+            tm_lines = ["Mode: full-data majority per topic",
+                        "Per-topic majority label:"]
+            tm_lines += [f"  {t} -> {lab}" for t, lab in topic_majority.items()]
+            write_outputs(args.out_dir, baseline_key, "predictions", df, preds,
+                          header_extra=tm_lines)
 
         elif spec.kind == "constant":
             label_name = "1 (triggering)" if spec.const_value == 1 else "0 (non-triggering)"

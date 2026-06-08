@@ -1,32 +1,27 @@
 import os
 import json
 import gc
-import re
+
 
 from dotenv import load_dotenv
 
 import torch
 import pandas as pd
 
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, f1_score
 
 from utils.taxonomy import TAXONOMY, _format_taxonomy
 from utils.prompts import ANNOTATION_PROMPT_METADATA as ANNOTATION_PROMPT
-from utils.inference_utils import ModelSpec, REGISTRY
-from utils.utils import newspapers
+from utils.inference_utils import REGISTRY
+from utils.utils import newspapers, make_dev_test_split
 
-from utils.taxonomy import canonical_topic, parse_topic
-from utils.inference_utils import build_messages, load_model
+from utils.taxonomy import canonical_topic
+from utils.inference_utils import load_model
 from utils.inference_utils import run_inference_topic as run_inference
 
 TAXONOMY_BLOCK = _format_taxonomy(TAXONOMY)
 BATCH_SIZE = 8         
 MAX_LENGTH = 4096      
-
-# --------------------------------------------------------------------------- #
-# Data preparation
-# --------------------------------------------------------------------------- #
 
 def create_prompt(row) -> str:
     return ANNOTATION_PROMPT.format(
@@ -59,7 +54,6 @@ def load_gold_data(use_fake_data: bool = True) -> pd.DataFrame:
 
             topic = metadata.get("topic")
             if topic is None or (isinstance(topic, str) and not topic.strip()):
-                # No gold topic on this article -> not usable for selection/eval.
                 print(f"WARNING: no 'topic' field in {newspaper}/{filename} — skipped")
                 continue
 
@@ -79,8 +73,8 @@ def load_gold_data(use_fake_data: bool = True) -> pd.DataFrame:
                 "filename": filename,
                 "video_title": video_title,
                 "video_description": video_description,
-                "topic_raw": topic,                  # original gold value, kept for audit
-                "topic": canonical_topic(topic),     # mapped to a top-level category
+                "topic_raw": topic,                  
+                "topic": canonical_topic(topic),     
             })
 
     if not rows:
@@ -90,25 +84,6 @@ def load_gold_data(use_fake_data: bool = True) -> pd.DataFrame:
     df["annotation_prompt"] = df.apply(create_prompt, axis=1)
     return df
 
-
-def make_dev_test_split(gold_df, test_size: float = 0.4, seed: int = 42):
-    """
-    60/40 dev/test, stratified on topic so rare categories are not all dumped
-    into one side. With many categories a stratum may be too small to split
-    (train_test_split needs >= 2 members per stratum); fall back to a plain
-    random split in that case.
-    """
-    strat = gold_df["topic"]
-    if strat.value_counts().min() < 2:
-        print("WARNING: some topics have < 2 examples — splitting without stratification")
-        strat = None
-    return train_test_split(gold_df, test_size=test_size, random_state=seed, stratify=strat)
-
-
-
-# --------------------------------------------------------------------------- #
-# Scoring, selection, evaluation
-# --------------------------------------------------------------------------- #
 
 def score(y_true: list, y_pred: list, label: str) -> dict:
     """Drop unparseable predictions, report, return macro-F1 across categories."""
@@ -187,16 +162,10 @@ def select_and_evaluate(dev_df, test_df, model_keys, batch_size: int = BATCH_SIZ
     print("\nSaved -> results_summary_topics.json")
     return summary
 
-
-# --------------------------------------------------------------------------- #
-# Main
-# --------------------------------------------------------------------------- #
-
 def main():
-    load_dotenv()  # for Hugging Face API keys, if needed
-
-    gold_df = load_gold_data(use_fake_data=False)   # flip to False for the real run
-    # gold_df.to_csv("try.csv", index=False)         # keep for inspection
+    load_dotenv() 
+    gold_df = load_gold_data(use_fake_data=False)   
+    # gold_df.to_csv("try.csv", index=False)        
 
     # TODO: For small testing runs
     test = False

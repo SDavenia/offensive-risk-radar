@@ -1,21 +1,18 @@
 import os
 import json
 import gc
-import re
 import argparse
 
 from dotenv import load_dotenv
 
 import torch
-import pandas as pd
 
 from utils.taxonomy import TAXONOMY, _format_taxonomy
 from utils.prompts import ANNOTATION_PROMPT_METADATA as ANNOTATION_PROMPT
 from utils.inference_utils import ModelSpec, REGISTRY
 from utils.utils import newspapers
 
-from utils.taxonomy import parse_topic
-from utils.inference_utils import build_messages, load_model
+from utils.inference_utils import load_model
 from utils.inference_utils import run_inference_topic as run_inference
 
 TAXONOMY_BLOCK = _format_taxonomy(TAXONOMY)
@@ -64,22 +61,22 @@ def collect_pending(metadata_dir: str, annotated_dir: str, overwrite: bool):
         os.makedirs(annotated_np, exist_ok=True)
 
         for filename in sorted(os.listdir(metadata_np)):
-            # Only raw metadata files: plain <id>.json, never *_gold/_silver.json.
             if not filename.endswith(".json"):
                 continue
             if filename.endswith("_gold.json") or filename.endswith("_silver.json"):
                 continue
 
-            file_id = filename[:-5]                      # strip ".json"
+            file_id = filename[:-5]                      
             gold_path = os.path.join(annotated_np, f"{file_id}_gold.json")
             silver_path = os.path.join(annotated_np, f"{file_id}_silver.json")
 
             if os.path.exists(gold_path):
                 n_skipped_gold += 1
-                continue                                 # human-annotated already
+                continue                                
+            # If already done, skp it
             if os.path.exists(silver_path) and not overwrite:
                 n_skipped_silver += 1
-                continue                                 # resume: already done
+                continue                                
 
             try:
                 metadata = read_metadata(os.path.join(metadata_np, filename))
@@ -121,11 +118,11 @@ def annotate_silver(model, proc, spec: ModelSpec,
         )
 
         for item, pred in zip(pending, preds):
-            topic = pred if pred is not None else ""     # "" mirrors "unparseable"
+            topic = pred if pred is not None else ""    
             if pred is None:
                 n_none += 1
-            out = dict(item["metadata"])                 # preserve raw schema...
-            out["topic"] = topic                         # ...+ the predicted topic
+            out = dict(item["metadata"])                
+            out["topic"] = topic                        
             try:
                 with open(item["silver_path"], "w", encoding="utf-8") as f:
                     json.dump(out, f, indent=2, ensure_ascii=False)
@@ -143,11 +140,6 @@ def annotate_silver(model, proc, spec: ModelSpec,
           f"skipped (existing silver): {n_skipped_silver} | "
           f"errors: {n_errors}")
     print(f"{'='*60}")
-
-
-# --------------------------------------------------------------------------- #
-# Main
-# --------------------------------------------------------------------------- #
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Silver-annotate article topics with the best model.")

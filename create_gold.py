@@ -1,25 +1,19 @@
 import os
 import numpy as np
 import pandas as pd
-
+import json
 # Measure annotator agreements 
 from collections import Counter
 from sklearn.metrics import cohen_kappa_score
 from itertools import combinations
+
+from utils.utils import newspapers
 
 
 input_dir =  "Annotators_workload"
 output_dir = "VideosComments"
 
 annotators = ["A1", "A2", "A3", "A4", "A5"]
-
-newspapers = [
-    "corriere_della_sera",
-    "il_gazzettino",
-    "ilmessaggero",
-    "lastampa",
-    "repubblica"
-]
 
 ############## For comments ##############
 files_annotators_paths = {}
@@ -32,7 +26,7 @@ for annotator in annotators:
                 file_id = filename.split(".")[0]
                 if file_id not in files_annotators_paths:
                     files_annotators_paths[file_id] = []
-                files_annotators_paths[file_id].append((input_file_path, newspaper))  # ← store newspaper
+                files_annotators_paths[file_id].append((input_file_path, newspaper))  
 
 
 bad = {fid: paths for fid, paths in files_annotators_paths.items() if len(paths) != 3}
@@ -49,8 +43,8 @@ if bad:
 annotator_full_labels = {ann: [] for ann in annotators}
 
 for file_id, paths in files_annotators_paths.items():
-    paths_only = [p for p, _ in paths]                         # ← unpack
-    newspaper = paths[0][1]                                    # ← recover newspaper
+    paths_only = [p for p, _ in paths]                       
+    newspaper = paths[0][1]                                 
     file_annotators = [p.split("/")[1] for p in paths_only]
     dfs = []
     for p in paths_only:
@@ -91,10 +85,8 @@ for a1, a2 in combinations(df.columns, 2):
 print(f"Average Cohen's Kappa: {sum(all_cohen_kappas)/len(all_cohen_kappas):.3f}")
 
 
-############## For labels ##############
 ############## For metadata (topic) ##############
-import json
-from collections import Counter
+
 
 files_meta_paths = {}  # video_id -> list of (path, newspaper)
 for annotator in annotators:

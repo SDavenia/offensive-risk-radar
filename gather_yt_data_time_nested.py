@@ -16,8 +16,7 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 
 from yt_dlp import YoutubeDL
-from youtube_comment_downloader import YoutubeCommentDownloader
-from youtube_comment_downloader import SORT_BY_POPULAR
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--newspaper_source', default="all", help="Which newspaper(s) to process, comma-separated (e.g. 'repubblica,il_giornale') or 'all'")

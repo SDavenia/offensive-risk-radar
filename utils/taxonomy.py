@@ -114,22 +114,22 @@ for _cat, _insts in TAXONOMY.items():
 _INSTANCE_KEYS = sorted(_INSTANCE_LOOKUP, key=len, reverse=True)
 
 def parse_topic(raw: str):
-    """Map a model output to one of the 17 categories. None if nothing matches.
-
-    Order: exact category -> exact instance -> category substring (longest first)
-    -> instance substring (longest first). Categories always win over instances
-    so a clean 'society' is never shadowed by a longer instance string."""
+    """Map a model output to one of the 17 categories. None if nothing matches."""
     if not raw:
         return None
     text = _norm(raw)
 
+    # Try exact matches
     if text in _CAT_BY_NORM:
         return _CAT_BY_NORM[text]
+    # try instance matches
     if text in _INSTANCE_LOOKUP:
         return _INSTANCE_LOOKUP[text]
+    # try substring matches
     for key in _CATEGORY_KEYS:
         if key in text:
             return _CAT_BY_NORM[key]
+    # try instance substring matches
     for key in _INSTANCE_KEYS:
         if key in text:
             return _INSTANCE_LOOKUP[key]
@@ -138,9 +138,7 @@ def parse_topic(raw: str):
 
 
 def canonical_topic(raw):
-    """Normalise a GOLD topic value to its top-level category.
-    Accepts a category, an instance, or (defensively) a 1-element list.
-    Unknown strings are returned as-is so they surface as their own class."""
+    """Try to map a raw topic string to a canonical category. Return None if no match."""
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):
         return None
     if isinstance(raw, (list, tuple)):

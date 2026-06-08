@@ -5,14 +5,7 @@ import argparse
 import numpy as np
 import pandas as pd
 
-
-newspapers = [
-    "corriere_della_sera",
-    "il_gazzettino",
-    "ilmessaggero",
-    "lastampa",
-    "repubblica",
-]
+from utils.utils import newspapers
 
 OUTPUT_COLUMNS = [
     "video_id", "newspaper", "video_text", "video_description", "video_topic",
@@ -31,7 +24,6 @@ def offensive_score(n, n_off, lambda1=1.0):
     return np.arctan((n_off / n) + lambda1 * np.log(n_off)) / (np.pi / 2)
 
 def parse_annotated_filename(filename: str):
-    """'<id>_gold.json' -> ('<id>', 'gold'); same for _silver and .csv. None otherwise."""
     for ext in (".json", ".csv"):
         for suffix, kind in (("_gold", "gold"), ("_silver", "silver")):
             tag = suffix + ext
@@ -41,7 +33,6 @@ def parse_annotated_filename(filename: str):
 
 
 def index_annotated(dir_path: str) -> dict:
-    """Map id -> (path, type) for one newspaper dir; gold beats silver on conflict."""
     out = {}
     if not os.path.isdir(dir_path):
         return out
@@ -51,7 +42,7 @@ def index_annotated(dir_path: str) -> dict:
             continue
         file_id, kind = parsed
         if file_id in out and out[file_id][1] == "gold":
-            continue                                   # gold already claimed it
+            continue                                   
         if file_id not in out or kind == "gold":
             out[file_id] = (os.path.join(dir_path, fn), kind)
     return out
@@ -68,19 +59,18 @@ def read_meta(meta_path: str):
 
 def read_comment_stats(comm_path: str):
     """Return (num_comments, n_offensive). Files with no rows (including
-    completely empty files) yield (0, 0). n_offensive counts label == 1 over
-    ALL rows; unparseable/empty labels stay in the denominator, not here."""
+    completely empty files) yield (0, 0). """
     try:
         df = pd.read_csv(comm_path)
     except pd.errors.EmptyDataError:
-        return 0, 0                                    # empty file -> 0 counts
+        return 0, 0                                    
     num_comments = len(df)
     if num_comments == 0:
         return 0, 0
     if "label" not in df.columns:
         print(f"  WARNING: no 'label' column in {comm_path} — treated as 0 offensive")
         return num_comments, 0
-    labels = pd.to_numeric(df["label"], errors="coerce")     # empty/unparseable -> NaN
+    labels = pd.to_numeric(df["label"], errors="coerce")    
     n_offensive = int((labels == 1).sum())
     return num_comments, n_offensive
 

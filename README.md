@@ -1,8 +1,12 @@
 # Towards an Offensive-Radar
 
-This repository contains the code to replicate the experiments from the 
+This repository contains the code to replicate the experiments from the paper "Before the Storm: Estimating Offensive Speech Risk from Italian News on YouTube".
 
-The full pipeline consists of a series of steps which are briefly described below.
+Authors: Samuele D'Avenia, Eliana Di Palma, Lia Draetta, Soda Marem Lo and Marta Marchiori Manerba.
+
+The full pipeline consists of a series of steps to create the data and test the proposed methodology and baselines.
+We briefly describe the steps below and visualize them in the image:
+
 ## Repo structure
 
 ```
